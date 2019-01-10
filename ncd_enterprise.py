@@ -30,10 +30,11 @@ class NCDEnterprise:
     def sensor_data(self, payload):
         parsed = {
             'nodeId': payload[0],
-			'firmware': payload[1],
-			'battery': msbLsb(payload[2], payload[3]) * 0.00322,
-			'counter': payload[4],
-			'sensor_type_id': msbLsb(payload[5], payload[6]),
+            'firmware': payload[1],
+            'battery': msbLsb(payload[2], payload[3]) * 0.00322,
+            'battery_percent': str(((msbLsb(payload[2], payload[3]) * 0.00322) - 1.3)/2.03*100) + "%",
+            'counter': payload[4],
+            'sensor_type_id': msbLsb(payload[5], payload[6]),
         }
         parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
         parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
@@ -84,79 +85,78 @@ class NCDEnterprise:
 def sensor_types():
     types = {
         # check
-		"1": {
-			'name': "Temperature/Humidity",
-			'parse':  lambda d : {
+        "1": {
+            'name': "Temperature/Humidity",
+            'parse':  lambda d : {
                 'humidity': msbLsb(d[0], d[1])/100,
                 'temperature': (msbLsb(d[2], d[3])/100)
             }
-		},
+        },
         # check
         "2": {
-			'name': "2 Channel Push Notification",
-			'parse': lambda d :	{
+            'name': "2 Channel Push Notification",
+            'parse': lambda d :	{
                 'input_1': d[0],
                 'input_2': d[1]
             }
-		},
+        },
         # check
-		"3": {
-			'name': "ADC",
-			'parse': lambda d :	{
+        "3": {
+            'name': "ADC",
+            'parse': lambda d :	{
                 'input_1': msbLsb(d[0], d[1]),
                 'input_2': msbLsb(d[2], d[3])
             }
-		},
+        },
         # check
-		"4": {
-			'name': "Thermocouple",
-			'parse': lambda d :	{
+        "4": {
+            'name': "Thermocouple",
+            'parse': lambda d :	{
                 'temperature': reduce(msbLsb, d[0:4])/100
             }
-		},
+        },
         # check
-		"5": {
-			'name': "Gyro/Magneto/Temperature",
-			'parse': lambda d :	{
-				'accel_x': signInt(reduce(msbLsb, d[0:3]), 24)/100,
-				'accel_y': signInt(reduce(msbLsb, d[3:6]), 24)/100,
-				'accel_z': signInt(reduce(msbLsb, d[6:9]), 24)/100,
-				'magneto_x': signInt(reduce(msbLsb, d[9:12]), 24)/100,
-				'magneto_y': signInt(reduce(msbLsb, d[12:15]), 24)/100,
-				'magneto_z': signInt(reduce(msbLsb, d[15:18]), 24)/100,
-				'gyro_x': signInt(reduce(msbLsb, d[18:21]), 24),
-				'gyro_y': signInt(reduce(msbLsb, d[21:24]), 24),
-				'gyro_z': signInt(reduce(msbLsb, d[24:27]), 24),
-				'temperature': signInt(msbLsb(d[27], d[28]), 16)
+        "5": {
+            'name': "Gyro/Magneto/Temperature",
+            'parse': lambda d :	{
+                'accel_x': signInt(reduce(msbLsb, d[0:3]), 24)/100,
+                'accel_y': signInt(reduce(msbLsb, d[3:6]), 24)/100,
+                'accel_z': signInt(reduce(msbLsb, d[6:9]), 24)/100,
+                'magneto_x': signInt(reduce(msbLsb, d[9:12]), 24)/100,
+                'magneto_y': signInt(reduce(msbLsb, d[12:15]), 24)/100,
+                'magneto_z': signInt(reduce(msbLsb, d[15:18]), 24)/100,
+                'gyro_x': signInt(reduce(msbLsb, d[18:21]), 24),
+                'gyro_y': signInt(reduce(msbLsb, d[21:24]), 24),
+                'gyro_z': signInt(reduce(msbLsb, d[24:27]), 24),
+                'temperature': signInt(msbLsb(d[27], d[28]), 16)
             }
-		},
+	},
         # check
-		"6": {
-			'name': "Temperature/Barometeric Pressure",
-			'parse': lambda d :	{
-				'temperature': msbLsb(d[0], d[1]),
-				'absolute_pressure': msbLsb(d[2], d[3])/1000,
-				'relative_pressure': signInt(msbLsb(d[4], d[5]), 16)/1000,
-				'altitude_change': signInt(msbLsb(d[6], d[7]), 16)/100
-			}
-		},
+        "6": {
+            'name': "Temperature/Barometeric Pressure",
+            'parse': lambda d :	{
+                'temperature': msbLsb(d[0], d[1]),
+                'absolute_pressure': msbLsb(d[2], d[3])/1000,
+                'relative_pressure': signInt(msbLsb(d[4], d[5]), 16)/1000,
+                'altitude_change': signInt(msbLsb(d[6], d[7]), 16)/100
+            }
+        },
         # check
-		"8": {
-			'name': "Vibration",
-			'parse': lambda d :
-            {
-				'rms_x': signInt(reduce(msbLsb, d[0:3]), 24)/100,
-				'rms_y': signInt(reduce(msbLsb, d[3:6]), 24)/100,
-				'rms_z': signInt(reduce(msbLsb, d[6:9]), 24)/100,
-				'max_x': signInt(reduce(msbLsb, d[9:12]), 24)/100,
-				'max_y': signInt(reduce(msbLsb, d[12:15]), 24)/100,
-				'max_z': signInt(reduce(msbLsb, d[15:18]), 24)/100,
-				'min_x': signInt(reduce(msbLsb, d[18:21]), 24)/100,
-				'min_y': signInt(reduce(msbLsb, d[21:24]), 24)/100,
-				'min_z': signInt(reduce(msbLsb, d[24:27]), 24)/100,
-				'temperature': msbLsb(d[27], d[28])
-			}
-		},
+        "8": {
+            'name': "Vibration",
+            'parse': lambda d : {
+                'rms_x': signInt(reduce(msbLsb, d[0:3]), 24)/100,
+                'rms_y': signInt(reduce(msbLsb, d[3:6]), 24)/100,
+                'rms_z': signInt(reduce(msbLsb, d[6:9]), 24)/100,
+                'max_x': signInt(reduce(msbLsb, d[9:12]), 24)/100,
+                'max_y': signInt(reduce(msbLsb, d[12:15]), 24)/100,
+                'max_z': signInt(reduce(msbLsb, d[15:18]), 24)/100,
+                'min_x': signInt(reduce(msbLsb, d[18:21]), 24)/100,
+                'min_y': signInt(reduce(msbLsb, d[21:24]), 24)/100,
+                'min_z': signInt(reduce(msbLsb, d[24:27]), 24)/100,
+                'temperature': msbLsb(d[27], d[28])
+            }
+        },
         # untested
 		# "9": {
 		# 	'name': "Proximity",
@@ -166,12 +166,12 @@ def sensor_types():
 		# 	}
 		# },
         # check
-		"10": {
-			'name': "Light",
-			'parse': lambda d :	{
-				'lux': reduce(msbLsb, d[0:3])
-			}
-		},
+        "10": {
+            'name': "Light",
+            'parse': lambda d :	{
+                'lux': reduce(msbLsb, d[0:3])
+            }
+        },
         # untested
 		# "13": {
 		# 	'name': "Current Monitor",
@@ -200,13 +200,13 @@ def sensor_types():
 		# 	}
 		# },
         # check
-		"36": {
-			'name': "Two Channel Counter",
-			'parse': lambda d :	{
-				'counts_1': msbLsb(d[0], d[1]),
-				'counts_2': msbLsb(d[2], d[3])
-			}
-		},
+        "36": {
+            'name': "Two Channel Counter",
+            'parse': lambda d :	{
+                'counts_1': msbLsb(d[0], d[1]),
+                'counts_2': msbLsb(d[2], d[3])
+            }
+        },
         # untested
 		# "10006":{
 		# 	'name': "4-Channel 4-20 mA Input",
