@@ -1,4 +1,10 @@
-from digi.xbee.devices import XBeeDevice
+from digi.xbee.devices import DigiMeshDevice
+from digi.xbee.devices import RemoteDigiMeshDevice
+from digi.xbee.models.address import XBee64BitAddress
+from digi.xbee.packets.base import DictKeys
+from digi.xbee.packets.common import ATCommResponsePacket
+from digi.xbee.packets.common import TransmitStatusPacket
+
 from functools import reduce
 
 class NCDEnterprise:
@@ -13,49 +19,84 @@ class NCDEnterprise:
             '127': 'sensor_data'
         }
         self.data = {}
-        self.device = XBeeDevice(serial_port, baud_rate)
+        self.device = DigiMeshDevice(serial_port, baud_rate)
         self.device.open()
         self.callback = callback
-        self.device.add_data_received_callback(self.parse)
+        # removed as the data didn't contain the mac/serial address
+        # self.device.add_data_received_callback(self.parse)
+        self.device.add_packet_received_callback(self.parse)
 
-    def parse(self, xbee_message):
-        type = self.payload_type[str(xbee_message.data[0])]
-        if(callable(getattr(self, type))):
-            getattr(self, type)(xbee_message.data[1:])
+    def ncd_xbee_serial_open_override(self):
+        self.device.close()
+        self.device.open()
+        self.device.add_packet_received_callback(self.parse)
+
+    def send_data_to_address(self, address, data):
+        remote_device = RemoteDigiMeshDevice(self.device, XBee64BitAddress.from_hex_string(address))
+        self.device.send_data(remote_device, data)
 
 
+# digi.xbee.packets.common.ReceivePacket = data packet
+    def parse(self, xbee_packet):
+        # print(xbee_packet)
+        if not isinstance(xbee_packet, ATCommResponsePacket) and not isinstance(xbee_packet, TransmitStatusPacket):
+            self.ncd_xbee_serial_open_override()
+            data = xbee_packet.rf_data
+            packet_type = self.payload_type[str(data[0])]
+            # print(packet_type)
+            if(callable(getattr(self, packet_type))):
+                getattr(self, packet_type)(data[1:], xbee_packet.x64bit_source_addr)
+            else:
+                print('not supported')
+        # else:
+        #     self.callback({
+        #         'mode': False,
+        #     })
 
-        # self.sensor_data(xbee_message.data[1:])
 
-    def sensor_data(self, payload):
+    def sensor_data(self, payload, source_address):
         parsed = {
             'nodeId': payload[0],
             'firmware': payload[1],
             'battery': msbLsb(payload[2], payload[3]) * 0.00322,
-            'battery_percent': str(((msbLsb(payload[2], payload[3]) * 0.00322) - 1.3)/2.03*100) + "%",
+			'battery_percent': str(((msbLsb(payload[2], payload[3]) * 0.00322) - 1.3)/2.03*100) + "%",
+            'mode': False,
             'counter': payload[4],
-            'sensor_type_id': msbLsb(payload[5], payload[6]),
+            'sensor_type': msbLsb(payload[5], payload[6]),
+            'source_address': str(source_address),
+            # sensor_type_id is a holdover from a previous version. it should be deprecated eventually.
+            'sensor_type_id': msbLsb(payload[5], payload[6])
         }
-        parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
-        parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
+        # if the sensor is supported, parse it. If not return raw data.
+        if str(parsed['sensor_type']) in self.sensor_types:
+            parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type'])]['name']
+            parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type'])]['parse'](payload[8:])
+        else:
+            parsed['sensor_type_string'] = str(parsed['sensor_type'])+"-non-supported"
+            parsed['sensor_data'] = payload[8:]
         self.callback(parsed)
 
-    def power_up(self, payload):
-        return {
+    def power_up(self, payload, source_address):
+        self.callback({
             'nodeId': payload[0],
             'sensor_type': msbLsb(payload[2], payload[3]),
-        }
-    def config_ack(self, payload):
-        return {
+            'mode': payload[6:9].decode("utf-8"),
+            'source_address': str(source_address)
+        })
+    def config_ack(self, payload, source_address):
+        self.callback({
             'nodeId': payload[0],
             'counter': payload[1],
-            'sensor_type': msbLsb(payload[2], payload[3])
-        }
+            'mode': False,
+            'sensor_type': msbLsb(payload[2], payload[3]),
+            'source_address': str(source_address),
+            'config_response': payload[6:]
+        })
     def stop(self):
         self.device.close()
     def start(self):
         self.device.start()
-    def config_error(self, payload):
+    def config_error(self, payload, source_address):
         errors = [
             'Unknown',
             'Invalid Command',
@@ -74,13 +115,14 @@ class NCDEnterprise:
             'Unknown',
             'Invalid Parameter for Setup/Saving'
         ]
-        return {
+        self.callback({
             'nodeId': payload[0],
             'sensor_type': msbLsb(payload[2], payload[3]),
             'error': payload[6],
+            'mode': False,
             'error_message': errors[payload[6]],
             # last_sent: this.digi.lastSent
-        }
+        })
 
 def sensor_types():
     types = {
@@ -243,18 +285,3 @@ def signInt(i, b):
     if(i < 1<<(b-1)):
         return i
     return (i - (1<<b) + 1)
-
-# def my_custom_callback(sensor_data):
-#     print('full return: '+str(sensor_data))
-#     for prop in sensor_data:
-#         print(prop + ' ' + str(sensor_data[prop]))
-#     # print('sensor_data: '+str(sensor_data['sensor_data']))
-#     # print('sensor_type_id: '+str(sensor_data['sensor_type_id']))
-#     # print('sensor_type_name: '+sensor_data['sensor_type_name'])
-#     # print('counter: '+sensor_data['counter'])
-#     # print('battery: '+sensor_data['battery'])
-#     # print('firmware: '+sensor_data['firmware'])
-#     # print('nodeId: '+sensor_data['nodeId'])
-
-# testobj = EnterpriseNCD("/dev/tty.usbserial-A8004V35", 115200, 'ingress')
-# testobj.stop()
