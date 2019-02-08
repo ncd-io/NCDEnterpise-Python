@@ -28,7 +28,7 @@ def my_custom_callback(sensor_data):
         # set node-id and sleep duration (using hex) (sleep duration determines transmission interval)
         # a7 will be the node id in hex. a7 = 167 in decimal
         # 01a2 will be the sleep duration in seconds 01 = 256 seconds (MSB) a2 = 162 (LSB). Sleep duration in seconds = MSB*256+LSB
-        ncdModem.send_data_to_address(sensor_data['source_address'], bytearray.fromhex('f702000000a701a2'))
+        ncdModem.send_data_to_address(sensor_data['source_address'], bytearray.fromhex('f702000000a70001a2'))
         
         # WARNING using the below command is recommended only for adanced users it is commented out for your protection
         # if you alter this make sure to change your modem's KY parameter to match the passed key.
