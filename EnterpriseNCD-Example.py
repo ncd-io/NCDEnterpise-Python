@@ -4,7 +4,9 @@
 from ncd_enterprise import NCDEnterprise
 
 #TODO Change this line to your Serial Port
-SERIAL_PORT = "/dev/tty.usbserial-A8004V35"
+
+# SERIAL_PORT = "/dev/tty.usbserial-AC4CF4AA"
+SERIAL_PORT = "/dev/cu.usbserial-AC4CF4AA"
 BAUD_RATE = 115200
 
 #this is function is the callback that I pass into the NCDEnterprise module during
@@ -17,3 +19,4 @@ def my_custom_callback(sensor_data):
 #instantiate the NCDEnterprise Object and pass in the Serial Port, Baud Rate,
 # and Function/Method object
 ncdModem = NCDEnterprise(SERIAL_PORT, BAUD_RATE, my_custom_callback)
+# print(ncdModem.device.serial_port.rts)
