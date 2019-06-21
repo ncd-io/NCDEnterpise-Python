@@ -68,18 +68,18 @@ class NCDEnterprise:
 
     def buffer_mems(self, payload, source_address):
         source_address = str(source_address)
-        if not self.mems_buffer.get(str_source_address, False):
-            self.mems_buffer[str_source_address] = {}
+        if not self.mems_buffer.get(source_address, False):
+            self.mems_buffer[source_address] = {}
 
-        if payload[1] not in self.mems_buffer.get(str_source_address):
-            self.mems_buffer[str_source_address][payload[1]] = payload[4:]
+        if payload[1] not in self.mems_buffer.get(source_address):
+            self.mems_buffer[source_address][payload[1]] = payload[4:]
         else:
             print('error reported')
 
         # print(self.mems_buffer)
-        if(len(self.mems_buffer.get(str_source_address)) == 12):
-            self.parse_mems(self.mems_buffer.get(str_source_address), str_source_address)
-            self.mems_buffer[str_source_address] = {}
+        if(len(self.mems_buffer.get(source_address)) == 12):
+            self.parse_mems(self.mems_buffer.get(source_address), source_address)
+            self.mems_buffer[source_address] = {}
 
     # def buffer_mems(self, payload, source_address):
     #     if self.mems_buffer['time'] < time.time()-5:
@@ -107,7 +107,6 @@ class NCDEnterprise:
             packet_data = mems_dict.get(packet)[5:]
             packet_array = {}
             for reading in range(1, readings+1):
-
                 if index is not 12 and reading < 22:
                     reading_array[((index*readings)+reading)] = packet_data[((reading-1)*(bytes_in_single)):(reading-1)*(bytes_in_single)+bytes_in_single]
 
@@ -120,7 +119,7 @@ class NCDEnterprise:
                 'rms_y': signInt(reduce(msbLsb, sample_data[2:4]), 16),
                 'rms_z': signInt(reduce(msbLsb, sample_data[4:6]), 16)
             }
-        print(reading_array)
+        # print(reading_array)
         parsed = {
             'nodeId': mems_dict[1][0],
             'firmware': "NA",
@@ -133,9 +132,6 @@ class NCDEnterprise:
             'sensor_data': reading_array
         }
         self.callback(parsed)
-        # return reading_array
-        print("!!!!!!!!!!!!!!!!!")
-
 
     def sensor_data(self, payload, source_address):
         # print(payload)
