@@ -72,13 +72,13 @@ class NCDEnterprise:
             self.mems_buffer[source_address] = {}
 
         if payload[1] not in self.mems_buffer.get(source_address):
-            self.mems_buffer[source_address][payload[1]] = payload[4:]
+            self.mems_buffer[source_address][payload[1]] = payload[5:]
         else:
             print('error reported')
 
         # print(self.mems_buffer)
         if(len(self.mems_buffer.get(source_address)) == 12):
-            self.parse_mems(self.mems_buffer.get(source_address), source_address)
+            self.parse_mems(self.mems_buffer.get(source_address), source_address, payload[1], payload[4])
             self.mems_buffer[source_address] = {}
 
     # def buffer_mems(self, payload, source_address):
@@ -98,33 +98,44 @@ class NCDEnterprise:
     #         self.parse_mems(self.mems_buffer['data'], source_address)
     #         self.mems_buffer = {'time': False, 'data': {}}
 
-    def parse_mems(self, mems_dict, source_address):
+    def parse_mems(self, mems_dict, source_address, node_id, odr):
         # print(mems_dict)
         readings = 29
         bytes_in_single = 6
         reading_array = {}
         for index, packet in enumerate(mems_dict):
-            packet_data = mems_dict.get(packet)[5:]
+            packet_data = mems_dict.get(packet)
             packet_array = {}
+            # print('++++')
+            # print(index)
+            # print(packet)
+            # print(len(packet_data))
+            #
+            # print(packet_data)
             for reading in range(1, readings+1):
-                if index is not 12 and reading < 22:
-                    reading_array[((index*readings)+reading)] = packet_data[((reading-1)*(bytes_in_single)):(reading-1)*(bytes_in_single)+bytes_in_single]
-
+                if packet == 12 and reading >= 22:
+                    break
+                # print('---')
+                # print(((index*readings)+reading))
+                # print(len(packet_data[((reading-1)*(bytes_in_single)):(reading-1)*(bytes_in_single)+bytes_in_single]))
+                reading_array[((index*readings)+reading)] = packet_data[((reading-1)*(bytes_in_single)):(reading-1)*(bytes_in_single)+bytes_in_single]
+        # print(len(reading_array))
+        # print('!!!---!!!')
         for sample in reading_array:
-            print('77777')
             # print(type(bytearray(sample)))
             sample_data = reading_array.get(sample)
+            # print(sample_data)
             reading_array[sample] = {
                 'rms_x': signInt(reduce(msbLsb, sample_data[0:2]), 16),
                 'rms_y': signInt(reduce(msbLsb, sample_data[2:4]), 16),
                 'rms_z': signInt(reduce(msbLsb, sample_data[4:6]), 16)
             }
-        # print(reading_array)
         parsed = {
-            'nodeId': mems_dict[1][0],
+            'nodeId': node_id,
+            'odr': odr,
             'firmware': "NA",
             'battery': "NA",
-            'battery_percent': str(((msbLsb(mems_dict[1][2], mems_dict[1][3]) * 0.00322) - 1.3)/2.03*100) + "%",
+            'battery_percent': "NA",
             'counter': "NA",
             'sensor_type_id': 40,
             'source_address': str(source_address),
@@ -374,28 +385,8 @@ def msbLsb(m,l):
     return (m<<8)+l
 
 def signInt(i, b):
-    print('+++')
-    print(i)
-    print(b)
     i = int(i)
     b = int(b)
-    print(i)
-    print(b)
     if(i < 1<<(b-1)):
         return i
     return (i - (1<<b) + 1)
-
-# def my_custom_callback(sensor_data):
-#     print('full return: '+str(sensor_data))
-#     for prop in sensor_data:
-#         print(prop + ' ' + str(sensor_data[prop]))
-#     # print('sensor_data: '+str(sensor_data['sensor_data']))
-#     # print('sensor_type_id: '+str(sensor_data['sensor_type_id']))
-#     # print('sensor_type_name: '+sensor_data['sensor_type_name'])
-#     # print('counter: '+sensor_data['counter'])
-#     # print('battery: '+sensor_data['battery'])
-#     # print('firmware: '+sensor_data['firmware'])
-#     # print('nodeId: '+sensor_data['nodeId'])
-
-# testobj = EnterpriseNCD("/dev/tty.usbserial-A8004V35", 115200, 'ingress')
-# testobj.stop()
