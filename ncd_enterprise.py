@@ -72,13 +72,16 @@ class NCDEnterprise:
             self.mems_buffer[source_address] = {}
 
         if payload[1] not in self.mems_buffer.get(source_address):
+            # packet has been shifted left one, therefore data will start at byte 5.
             self.mems_buffer[source_address][payload[1]] = payload[5:]
         else:
             print('error reported')
 
         # print(self.mems_buffer)
         if(len(self.mems_buffer.get(source_address)) == 12):
-            self.parse_mems(self.mems_buffer.get(source_address), source_address, payload[1], payload[4])
+            # packet from intercept has first byte trimmed. Shift expected position left.
+            # i.e. node_id is byte 0 instead of documented one.
+            self.parse_mems(self.mems_buffer.get(source_address), source_address, payload[0], payload[4])
             self.mems_buffer[source_address] = {}
 
     # def buffer_mems(self, payload, source_address):
