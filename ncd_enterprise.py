@@ -22,6 +22,9 @@ class NCDEnterprise:
         self.device.open()
         self.callback = callback
         self.device.add_packet_received_callback(self.parse)
+        self.error_callback = None
+        if kwargs.get('error_handler'):
+            self.error_callback = kwargs.get('error_handler')
         self.mems_buffer = {}
 
     def send_data_to_address(self, address, data):
@@ -48,27 +51,40 @@ class NCDEnterprise:
         if not self.mems_buffer.get(source_address, False):
             self.mems_buffer[source_address] = {}
 
+
+        # If there is an ongoing error, process it. This is primarily to reduce
+        # multiple instances of data corruption errors for the same dataset from
+        # the sensor
+        # If the dict has an error key
+        if self.mems_buffer.get(source_address).get('timeout_exception_start'):
+            # self.mems_buffer[source_address][payload[1]] = payload[5:]
+            # if 500 millis have passed or this is a last packet (packet 12)
+            if (self.get_current_millis() - self.mems_buffer.get(source_address).get('timeout_exception_start')) > 500 or payload[1] == 12:
+                self.mems_buffer[source_address][payload[1]] = payload[5:]
+                # set error
+                self.parse_error_callback(self.mems_buffer.get(source_address))
+                # clear buffer
+                self.mems_buffer[source_address] = {}
+                # if the current payload is not a new dataset, do not process further
+                if payload[1] != 1:
+                    return
+
         if payload[1] not in self.mems_buffer.get(source_address):
-            # packet has been shifted left one, therefore data will start at byte 5.
-            self.mems_buffer[source_address][payload[1]] = payload[5:]
+            if len(self.mems_buffer.get(source_address)) == (int(payload[1]) -1):
+                # packet has been shifted left one, therefore data will start at byte 5.
+                self.mems_buffer[source_address][payload[1]] = payload[5:]
+            else:
+                self.mems_buffer[source_address][payload[1]] = payload[5:]
+                self.mems_buffer[source_address]['timeout_exception_start'] = self.get_current_millis()
+                return
         else:
-            print('error reported in V2 Mems Buffer')
+            print('Duplicate keys error reported in V2 Mems Buffer')
 
         if(len(self.mems_buffer.get(source_address)) == 12):
             # packet from intercept has first byte trimmed. Shift expected position left.
             # i.e. node_id is byte 0 instead of documented one.
-            print(payload[-5])
             self.parse_mems(self.mems_buffer.get(source_address), source_address, payload)
             self.mems_buffer[source_address] = {}
-
-# Usartwrite(temperature>>8);
-# Usartwrite(temperature);
-#
-# Usartwrite(firmware);
-# Usartwrite((adc_0>>8));
-# Usartwrite((adc_0));
-# Usartwrite((type & 0x03)|(rslt<<2));
-# Usartwrite(inst_chksum);
 
     # TODO configuration commands put on hiatus. Need to import struct lib to ensure
     # packet compatibility. AKA sleep_time needs to be 3 bytes, if a single int is passed
@@ -78,13 +94,14 @@ class NCDEnterprise:
     #     sleep_time = bytearray(node_id)
     #     self.send_data_to_address(target_address, bytearray.fromhex('f702000000')+node_id+sleep_time)
 
-    def parse_mems(self, mems_dict, source_address, last_payload):
-        # print(mems_dict)
-        # node_id = last_payload[0]
-        # odr = last_payload[4]
-        # temperature = last_payload[-5]
-        # firmware = last_payload[-4]
+    def parse_error_callback(self, message):
+        if(callable(self.error_callback)):
+            self.error_callback(message)
 
+    def get_current_millis(self):
+        return int(round(time.time() * 1000))
+
+    def parse_mems(self, mems_dict, source_address, last_payload):
         readings = 29
         bytes_in_single = 6
         reading_array = {}
@@ -95,7 +112,6 @@ class NCDEnterprise:
                 if packet == 12 and reading >= 22:
                     break
                 reading_array[((index*readings)+reading)] = packet_data[((reading-1)*(bytes_in_single)):(reading-1)*(bytes_in_single)+bytes_in_single]
-        print(reading_array)
         for sample in reading_array:
             sample_data = reading_array.get(sample)
             reading_array[sample] = {
@@ -128,10 +144,13 @@ class NCDEnterprise:
             'sensor_type_id': msbLsb(payload[5], payload[6]),
             'source_address': str(source_address),
         }
-        parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
-        print(payload[8:])
-        parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
-
+        try:
+            parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
+            parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
+        except:
+            parsed['sensor_type_string'] = 'Unsupported Sensor'
+            parsed['sensor_data'] = payload
+            self.callback(parsed)
         self.callback(parsed)
 
     def power_up(self, payload, source_address):
