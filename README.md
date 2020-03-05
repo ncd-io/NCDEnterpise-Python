@@ -2,7 +2,10 @@
 A Python Library to Interface to our Enterprise Wireless Line
 
 ## Installation
-This module doesn't currently have an install package. To install it you'll need to install the python-xbee module from https://github.com/digidotcom/python-xbee
+This module doesn't currently have an install package. To install it you'll need to install the python-xbee module.
+It is recommended to use Python 3 and the Python XBee package version 1.1.1.1. You can use the command "python3 -m pip install digi-xbee==1.1.1.1" to install this on a linux/mac machine. Newer versions of the digi-xbee libraries are not supported.
+
+Additional information can be found at https://github.com/digidotcom/python-xbee
 
 Once that's installed simply put the ncd_enterprise.py file in your python applications directory and reference it with the import function.
 
