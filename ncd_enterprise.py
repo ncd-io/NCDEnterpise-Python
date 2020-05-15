@@ -480,6 +480,24 @@ def sensor_types():
 				'position': (adc/1023*100)
 			}
 		},
+        #untested
+	    '32': {
+            'name': 'Particulate Matter Sensor',
+            'parse': lambda d : {
+                'mass_concentration_1_0':    reduce(msbLsb, d[0:4]),
+				'mass_concentration_2_5':    reduce(msbLsb, d[4:8]),
+				'mass_concentration_4_0':    reduce(msbLsb, d[8:12]),
+				'mass_concentration_10_0':   reduce(msbLsb, d[12:16]),
+				'number_concentration_0_5':  reduce(msbLsb, d[16:20]),
+				'number_concentration_1_0':  reduce(msbLsb, d[20:24]),
+				'number_concentration_2_5':  reduce(msbLsb, d[24:28]),
+				'number_concentration_4_0':  reduce(msbLsb, d[28:32]),
+				'number_concentration_10_0': reduce(msbLsb, d[32:36]),
+				'typical_size':              reduce(msbLsb, d[36:40]),
+				'humidity':                  reduce(msbLsb, d[40:42]),
+				'temperature':               reduce(msbLsb, d[42:44])
+            }
+        },
         # untested
 		'35': {
 			'name': 'One Channel Counter',
