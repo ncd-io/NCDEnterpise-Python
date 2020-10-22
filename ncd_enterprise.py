@@ -454,8 +454,8 @@ def sensor_types():
 			'name': '24-Bit 3-Channel Current Monitor',
 			'parse': lambda d :	{
 				'channel_1': reduce(msbLsb, d[0:3]),
-				'channel_2': reduce(msbLsb, d[3:6]),
-				'channel_3': reduce(msbLsb, d[6:9])
+				'channel_2': reduce(msbLsb, d[4:7]),
+				'channel_3': reduce(msbLsb, d[8:11])
 			}
 		},
         # TODO - test out the double lambda, this seems super un-pythonic so
