@@ -145,8 +145,14 @@ class NCDEnterprise:
             'source_address': str(source_address),
         }
         try:
-            parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
-            parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
+            if(parsed['sensor_type_id'] == 80):
+                parsed['sensor_type_string'] = 'One Channel Vibration Plus'
+                parsed['sensor_data'] = type80(payload, parsed, source_address)
+
+            else:
+                parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
+                parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
+
         except:
             parsed['sensor_type_string'] = 'Unsupported Sensor'
             parsed['sensor_data'] = payload
@@ -561,6 +567,10 @@ def sensor_types():
 				'current': signInt(reduce(msbLsb, d[33:36]), 24) / 1000
 			}
 		},
+        '80': {
+			'name': 'Predictive Maintenance Sensor',
+            'parse': lambda d :	'This is a more complex sensor and so is parsed using the defined function "type80"'
+		},
         # unsupported
 		# '10000':{
         #
@@ -595,6 +605,56 @@ def sensor_types():
 		# }
 	}
     return types
+def type80(payload, parsed, mac):
+    if(payload[7] >> 1 != 0):
+        sensor_data = {'error': 'Error found, Sensor Probe may be unattached'}
+        return sensor_data
+    odr_translate_dict = {
+        6: '50Hz',
+        7: '100Hz',
+        8: '200Hz',
+        9: '400Hz',
+        10: '800Hz',
+        11: '1600Hz',
+        12: '3200Hz',
+        13: '6400Hz',
+        14: '12800Hz',
+    }
+    odr = odr_translate_dict[payload[9]]
+    sensor_data = {
+        'mode': payload[8],
+
+        'odr': odr,
+
+        'temperature': signInt(reduce(msbLsb, payload[10:12]), 16) / 100,
+
+        'x_rms_ACC_G': reduce(msbLsb, payload[12:14])/1000,
+        'x_max_ACC_G': reduce(msbLsb, payload[14:16])/1000,
+        'x_velocity_mm_sec': reduce(msbLsb, payload[16:18]) / 100,
+        'x_displacement_mm': reduce(msbLsb, payload[18:20]) / 100,
+        'x_peak_one_Hz': reduce(msbLsb, payload[20:22]),
+        'x_peak_two_Hz': reduce(msbLsb, payload[22:24]),
+        'x_peak_three_Hz': reduce(msbLsb, payload[24:26]),
+
+        'y_rms_ACC_G': reduce(msbLsb, payload[26:28])/1000,
+        'y_max_ACC_G': reduce(msbLsb, payload[28:30])/1000,
+        'y_velocity_mm_sec': reduce(msbLsb, payload[30:32]) / 100,
+        'y_displacement_mm': reduce(msbLsb, payload[32:34]) / 100,
+        'y_peak_one_Hz': reduce(msbLsb, payload[34:36]),
+        'y_peak_two_Hz': reduce(msbLsb, payload[36:38]),
+        'y_peak_three_Hz': reduce(msbLsb, payload[38:40]),
+
+        'z_rms_ACC_G': reduce(msbLsb, payload[40:42])/1000,
+        'z_max_ACC_G': reduce(msbLsb, payload[42:44])/1000,
+        'z_velocity_mm_sec': reduce(msbLsb, payload[44:46]) / 100,
+        'z_displacement_mm': reduce(msbLsb, payload[46:48]) / 100,
+        'z_peak_one_Hz': reduce(msbLsb, payload[48:50]),
+        'z_peak_two_Hz': reduce(msbLsb, payload[50:52]),
+        'z_peak_three_Hz': reduce(msbLsb, payload[52:54]),
+    }
+
+
+    return sensor_data
 
 def msbLsb(m,l):
     return (m<<8)+l
