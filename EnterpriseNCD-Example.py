@@ -6,8 +6,10 @@ from ncd_enterprise import NCDEnterprise
 #TODO Change this line to your Serial Port
 
 # SERIAL_PORT = "/dev/tty.usbserial-AC4CF4AA"
-SERIAL_PORT = "/dev/cu.usbserial-A106F1ZE"
+SERIAL_PORT = "/dev/tty.usbserial-AI02QZQZ"
 BAUD_RATE = 115200
+print(SERIAL_PORT)
+print(BAUD_RATE)
 
 #this is function is the callback that I pass into the NCDEnterprise module during
 #instantiation. The module uses the Digi XBee module which runs on another thread.
@@ -16,6 +18,7 @@ def my_custom_callback(sensor_data):
     # print('full return: '+str(sensor_data))
     for prop in sensor_data:
         print(prop + ' ' + str(sensor_data[prop]))
+    print("")
 
 # Error callbacks are only supported for the vibration time series data sets currently
 def error_callback(error_data):

@@ -26,6 +26,7 @@ class NCDEnterprise:
         if kwargs.get('error_handler'):
             self.error_callback = kwargs.get('error_handler')
         self.mems_buffer = {}
+        self.general_buffer = {}
 
     def send_data_to_address(self, address, data):
         remote_device = RemoteDigiMeshDevice(self.device, XBee64BitAddress.from_hex_string(address))
@@ -144,20 +145,23 @@ class NCDEnterprise:
             'sensor_type_id': msbLsb(payload[5], payload[6]),
             'source_address': str(source_address),
         }
-        try:
-            if(parsed['sensor_type_id'] == 80):
-                parsed['sensor_type_string'] = 'One Channel Vibration Plus'
-                parsed['sensor_data'] = type80(payload, parsed, source_address)
+        # try:
+        if(parsed['sensor_type_id'] == 80):
+            parsed['sensor_type_string'] = 'One Channel Vibration Plus'
+            parsed['sensor_data'] = self.type80(payload, parsed, source_address)
+            if(parsed['sensor_data'] is not None):
+                self.callback(parsed)
 
-            else:
-                parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
-                parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
-
-        except:
-            parsed['sensor_type_string'] = 'Unsupported Sensor'
-            parsed['sensor_data'] = payload
+        else:
+            parsed['sensor_type_string'] = self.sensor_types[str(parsed['sensor_type_id'])]['name']
+            parsed['sensor_data'] = self.sensor_types[str(parsed['sensor_type_id'])]['parse'](payload[8:])
             self.callback(parsed)
-        self.callback(parsed)
+
+        # except:
+        #     parsed['sensor_type_string'] = 'Unsupported Sensor'
+        #     parsed['sensor_data'] = payload
+        #     self.callback(parsed)
+
 
     def power_up(self, payload, source_address):
         return {
@@ -203,6 +207,235 @@ class NCDEnterprise:
             'error_message': errors[payload[6]],
             # last_sent: this.digi.lastSent
         }
+    def type80(self, payload, parsed, mac):
+        if(payload[8] == 70 and payload[9] == 76 and payload[10] == 89):
+            sensor_data = {"Fly command received"}
+            return sensor_data
+        
+        if(payload[7] >> 1 != 0):
+            sensor_data = {'error': 'Error found, Sensor Probe may be unattached'}
+            return sensor_data
+
+
+        if(payload[8] == 1):
+            deviceAddr = str(mac)
+            firmware = payload[1]
+            hour = payload[11]
+            minute = payload[12]
+            expected_packets = payload[15]
+            current_packet = payload[16]
+            sdata_start = 17
+
+            if deviceAddr in self.general_buffer:
+                if(current_packet in self.general_buffer[deviceAddr]['data'] or current_packet == 1 or not (((current_packet&127)-1) in self.general_buffer[deviceAddr]['data'])):
+                    print("Packet Failure")
+                    self.general_buffer.pop(deviceAddr)
+                # TODO This is a packet recovery that can be added later
+                # else:
+                #     mode = payload[8]
+                #     odr = payload[9]
+                #     en_axis = payload[10] & 7
+                #     fsr = payload[10] >> 6
+                #     device_temp = msbLsb(payload[13], payload[14])/100
+                #
+                #     odr_translate_dict = {
+                #         6: '50Hz',
+                #         7: '100Hz',
+                #         8: '200Hz',
+                #         9: '400Hz',
+                #         10: '800Hz',
+                #         11: '1600Hz',
+                #         12: '3200Hz',
+                #         13: '6400Hz',
+                #         14: '12800Hz',
+                #     }
+                #     odr = odr_translate_dict[payload[9]]
+                #
+                #     self.general_buffer[deviceAddr].data = {
+                #         'data': {},
+                #         'odr': odr,
+                #         'mo': mode,
+                #         'en_axis': en_axis,
+                #         'fsr': fsr,
+                #         'hour': hour,
+                #         'minute': minute,
+                #         'device_temp': device_temp,
+                #     }
+                #     return
+                else:
+                    self.general_buffer[deviceAddr]['data'][current_packet] = payload[sdata_start:]
+
+                if(len(self.general_buffer[deviceAddr]['data']) == expected_packets):
+                    raw_data = bytearray()
+                    for packet in self.general_buffer[deviceAddr]['data']:
+                        # raw_data = np.concatenate(raw_data, self.general_buffer[deviceAddr]['data'][packet])
+                        # raw_data = raw_data + self.general_buffer[deviceAddr]['data'][packet]
+                        raw_data.extend(self.general_buffer[deviceAddr]['data'][packet])
+
+                    label = 0
+
+                    fft = []
+                    fft_concat = {}
+
+                    en_axis_data = {}
+                    if self.general_buffer[deviceAddr]['en_axis'] == 1:
+                        en_axis_data['x_offset'] = 0
+                        en_axis_data['increment'] = 2
+                    elif self.general_buffer[deviceAddr]['en_axis'] == 2:
+                        en_axis_data['y_offset'] = 0
+                        en_axis_data['increment'] = 2
+                    elif self.general_buffer[deviceAddr]['en_axis'] == 3:
+                        en_axis_data['x_offset'] = 0
+                        en_axis_data['y_offset'] = 2
+                        en_axis_data['increment'] = 4
+                    elif self.general_buffer[deviceAddr]['en_axis'] == 4:
+                        en_axis_data['z_offset'] = 0
+                        en_axis_data['increment'] = 2
+                    elif self.general_buffer[deviceAddr]['en_axis'] == 5:
+                        en_axis_data['x_offset'] = 0
+                        en_axis_data['z_offset'] = 2
+                        en_axis_data['increment'] = 4
+                    elif self.general_buffer[deviceAddr]['en_axis'] == 6:
+                        en_axis_data['y_offset'] = 0
+                        en_axis_data['z_offset'] = 2
+                        en_axis_data['increment'] = 4
+                    elif self.general_buffer[deviceAddr]['en_axis'] == 7:
+                        en_axis_data['x_offset'] = 0
+                        en_axis_data['y_offset'] = 2
+                        en_axis_data['z_offset'] = 4
+                        en_axis_data['increment'] = 6
+
+                    fsr_mult = .00006
+                    fsr_text = ""
+                    if self.general_buffer[deviceAddr]['fsr'] == 0:
+                        fsr_mult = 0.00006
+                        fsr_text = "2g"
+                    elif self.general_buffer[deviceAddr]['fsr'] == 1:
+                        fsr_mult = 0.00012
+                        fsr_text = "4g"
+                    elif self.general_buffer[deviceAddr]['fsr'] == 2:
+                        fsr_mult = 0.00024
+                        fsr_text = "8g"
+                    elif self.general_buffer[deviceAddr]['fsr'] == 2:
+                        fsr_mult = 0.00049
+                        fsr_text = "16g"
+
+                    for i in range(0, len(raw_data), en_axis_data['increment']):
+                    	label = label+1
+                    	fft_concat[label] = {}
+
+                    	if('x_offset' in en_axis_data):
+                    		fft_concat[label]['x'] = round(float((signInt(((raw_data[i+en_axis_data['x_offset']]<<8)+(raw_data[i+en_axis_data['x_offset']+1])), 16)*fsr_mult)), 5)
+                    	if('y_offset' in en_axis_data):
+                    		fft_concat[label]['y'] = round(float((signInt(((raw_data[i+en_axis_data['y_offset']]<<8)+(raw_data[i+en_axis_data['y_offset']+1])), 16)*fsr_mult)), 5)
+                    	if('z_offset' in en_axis_data):
+                    		fft_concat[label]['z'] = round(float((signInt(((raw_data[i+en_axis_data['z_offset']]<<8)+(raw_data[i+en_axis_data['z_offset']+1])), 16)*fsr_mult)), 5)
+
+
+                    fft_concat_obj = {
+                    	'time_id': str(self.general_buffer[deviceAddr]['hour']) +':'+ str(self.general_buffer[deviceAddr]['minute']),
+                    	'mac_address': deviceAddr,
+                    	'en_axis': self.general_buffer[deviceAddr]['en_axis'],
+                    	'fsr': fsr_text,
+                    	'odr': self.general_buffer[deviceAddr]['odr'],
+                    	'device_temp': self.general_buffer[deviceAddr]['device_temp'],
+                    	'data': fft_concat
+                    	# 'data': type(raw_data[0+en_axis_data['z_offset']])
+                    	# 'data': len(raw_data)
+                    }
+                    sensor_data = fft_concat_obj
+                    self.general_buffer.pop(deviceAddr)
+                    # if(this.hasOwnProperty('failure_no')){
+                    # 	console.log('####falure no')
+                    # 	console.log(this.failure_no)
+                    # }
+
+                    return sensor_data
+            else:
+                mode = payload[8]
+                odr = payload[9]
+                en_axis = payload[10] & 7
+                fsr = payload[10] >> 6
+                device_temp = msbLsb(payload[13], payload[14])/100
+
+
+                odr_translate_dict = {
+                    6: '50Hz',
+                    7: '100Hz',
+                    8: '200Hz',
+                    9: '400Hz',
+                    10: '800Hz',
+                    11: '1600Hz',
+                    12: '3200Hz',
+                    13: '6400Hz',
+                    14: '12800Hz',
+                }
+                odr = odr_translate_dict[odr]
+
+                self.general_buffer[deviceAddr] = {
+                    'data': {},
+                    'odr': odr,
+                    'mo': mode,
+                    'en_axis': en_axis,
+                    'fsr': fsr,
+                    'hour': hour,
+                    'minute': minute,
+                    'device_temp': device_temp,
+                }
+                self.general_buffer[deviceAddr]['data'][current_packet] = payload[sdata_start:];
+                return;
+        else:
+            odr_translate_dict = {
+                6: '50Hz',
+                7: '100Hz',
+                8: '200Hz',
+                9: '400Hz',
+                10: '800Hz',
+                11: '1600Hz',
+                12: '3200Hz',
+                13: '6400Hz',
+                14: '12800Hz',
+            }
+            odr = odr_translate_dict[payload[9]]
+            sensor_data = {
+                'mode': payload[8],
+
+                'odr': odr,
+
+                'temperature': signInt(reduce(msbLsb, payload[10:12]), 16) / 100,
+
+                'x_rms_ACC_G': reduce(msbLsb, payload[12:14])/1000,
+                'x_max_ACC_G': reduce(msbLsb, payload[14:16])/1000,
+                'x_velocity_mm_sec': reduce(msbLsb, payload[16:18]) / 100,
+                'x_displacement_mm': reduce(msbLsb, payload[18:20]) / 100,
+                'x_peak_one_Hz': reduce(msbLsb, payload[20:22]),
+                'x_peak_two_Hz': reduce(msbLsb, payload[22:24]),
+                'x_peak_three_Hz': reduce(msbLsb, payload[24:26]),
+
+                'y_rms_ACC_G': reduce(msbLsb, payload[26:28])/1000,
+                'y_max_ACC_G': reduce(msbLsb, payload[28:30])/1000,
+                'y_velocity_mm_sec': reduce(msbLsb, payload[30:32]) / 100,
+                'y_displacement_mm': reduce(msbLsb, payload[32:34]) / 100,
+                'y_peak_one_Hz': reduce(msbLsb, payload[34:36]),
+                'y_peak_two_Hz': reduce(msbLsb, payload[36:38]),
+                'y_peak_three_Hz': reduce(msbLsb, payload[38:40]),
+
+                'z_rms_ACC_G': reduce(msbLsb, payload[40:42])/1000,
+                'z_max_ACC_G': reduce(msbLsb, payload[42:44])/1000,
+                'z_velocity_mm_sec': reduce(msbLsb, payload[44:46]) / 100,
+                'z_displacement_mm': reduce(msbLsb, payload[46:48]) / 100,
+                'z_peak_one_Hz': reduce(msbLsb, payload[48:50]),
+                'z_peak_two_Hz': reduce(msbLsb, payload[50:52]),
+                'z_peak_three_Hz': reduce(msbLsb, payload[52:54]),
+            }
+
+
+            return sensor_data
+
+
+
+
+
 
 def sensor_types():
     types = {
@@ -605,56 +838,8 @@ def sensor_types():
 		# }
 	}
     return types
-def type80(payload, parsed, mac):
-    if(payload[7] >> 1 != 0):
-        sensor_data = {'error': 'Error found, Sensor Probe may be unattached'}
-        return sensor_data
-    odr_translate_dict = {
-        6: '50Hz',
-        7: '100Hz',
-        8: '200Hz',
-        9: '400Hz',
-        10: '800Hz',
-        11: '1600Hz',
-        12: '3200Hz',
-        13: '6400Hz',
-        14: '12800Hz',
-    }
-    odr = odr_translate_dict[payload[9]]
-    sensor_data = {
-        'mode': payload[8],
-
-        'odr': odr,
-
-        'temperature': signInt(reduce(msbLsb, payload[10:12]), 16) / 100,
-
-        'x_rms_ACC_G': reduce(msbLsb, payload[12:14])/1000,
-        'x_max_ACC_G': reduce(msbLsb, payload[14:16])/1000,
-        'x_velocity_mm_sec': reduce(msbLsb, payload[16:18]) / 100,
-        'x_displacement_mm': reduce(msbLsb, payload[18:20]) / 100,
-        'x_peak_one_Hz': reduce(msbLsb, payload[20:22]),
-        'x_peak_two_Hz': reduce(msbLsb, payload[22:24]),
-        'x_peak_three_Hz': reduce(msbLsb, payload[24:26]),
-
-        'y_rms_ACC_G': reduce(msbLsb, payload[26:28])/1000,
-        'y_max_ACC_G': reduce(msbLsb, payload[28:30])/1000,
-        'y_velocity_mm_sec': reduce(msbLsb, payload[30:32]) / 100,
-        'y_displacement_mm': reduce(msbLsb, payload[32:34]) / 100,
-        'y_peak_one_Hz': reduce(msbLsb, payload[34:36]),
-        'y_peak_two_Hz': reduce(msbLsb, payload[36:38]),
-        'y_peak_three_Hz': reduce(msbLsb, payload[38:40]),
-
-        'z_rms_ACC_G': reduce(msbLsb, payload[40:42])/1000,
-        'z_max_ACC_G': reduce(msbLsb, payload[42:44])/1000,
-        'z_velocity_mm_sec': reduce(msbLsb, payload[44:46]) / 100,
-        'z_displacement_mm': reduce(msbLsb, payload[46:48]) / 100,
-        'z_peak_one_Hz': reduce(msbLsb, payload[48:50]),
-        'z_peak_two_Hz': reduce(msbLsb, payload[50:52]),
-        'z_peak_three_Hz': reduce(msbLsb, payload[52:54]),
-    }
 
 
-    return sensor_data
 
 def msbLsb(m,l):
     return (m<<8)+l
